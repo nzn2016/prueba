@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Overlay de Clips desde Chat</title>
+  <style>
+    body {
+      margin: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    #clipContainer {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="clipContainer"></div>
+
+  <!-- Incluimos tmi.js desde CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tmi.js/1.8.5/tmi.min.js"></script>
+  <script>
+    // CONFIGURACIÓN DE LA API DE TWITCH (REEMPLAZA CON TUS DATOS)
+    const clientID = 'TU_CLIENT_ID';
+    const token = 'TU_TOKEN'; // Token de acceso OAuth
+    // DOMINIO del parent para el embed (cámbialo por el dominio donde alojas este overlay)
+    const parentDomain = 'tudominio.com';
+
+    // Canal de chat donde se escucharán los comandos (puede ser el tuyo)
+    const chatChannel = 'tu_canal';
+
+    // Configuración del cliente de Twitch chat con tmi.js
+    const client = new tmi.Client({
+      options: { debug: true },
+      connection: { secure: true, reconnect: true },
+      channels: [ chatChannel ]
+    });
+
+    client.connect();
+
+    // Función para obtener el ID del usuario (canal) a partir del nombre de usuario
+    async function getUserID(username) {
+      const response = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
+        headers: {
+          'Client-ID': clientID,
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      if (data.data && data.data.length > 0) {
+        return data.data[0].id;
+      } else {
+        throw new Error('Usuario no encontrado');
+      }
+    }
+
+    // Función para obtener clips de un canal dado su broadcaster_id
+    async function getClips(broadcaster_id) {
+      const response = await fetch(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcaster_id}`, {
+        headers: {
+          'Client-ID': clientID,
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      return data.data;
+    }
+
+    // Función para mostrar un clip en el overlay
+    function showClip(clip) {
+      const container = document.getElementById('clipContainer');
+      // El embed de Twitch requiere que se especifique el parent (dominio permitido)
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://clips.twitch.tv/embed?clip=${clip.slug}&parent=${parentDomain}`;
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.frameBorder = '0';
+      // Limpiar el contenedor y agregar el iframe
+      container.innerHTML = '';
+      container.appendChild(iframe);
+    }
+
+    // Escuchar mensajes de chat para el comando !clip
+    client.on('message', async (channel, tags, message, self) => {
+      // Ignorar mensajes propios
+      if (self) return;
+
+      // Esperamos el comando en el formato: !clip canalNombre
+      if (message.startsWith('!clip ')) {
+        // Extraer el nombre de canal (todo en minúsculas)
+        const username = message.split(' ')[1].toLowerCase();
+        try {
+          const userID = await getUserID(username);
+          const clips = await getClips(userID);
+          if (clips.length > 0) {
+            // Seleccionar un clip aleatorio
+            const randomClip = clips[Math.floor(Math.random() * clips.length)];
+            showClip(randomClip);
+          } else {
+            console.log(`No se encontraron clips para el canal ${username}`);
+          }
+        } catch (error) {
+          console.error('Error al obtener clips:', error);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
